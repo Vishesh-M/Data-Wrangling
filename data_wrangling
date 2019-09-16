@@ -1,0 +1,151 @@
+DATA CLEANING GENERAL
+setwd("D:/")
+
+aca<-read.csv("states.csv",stringsAsFactors = FALSE)
+View(aca)
+
+colnames(aca)<-c("State", 
+                 "Uninsured_Rate_2010", 
+                 "Uninsured_Rate_2015",
+                 "Uninsured_Rate_Ch_2010_2015", 
+                 "Health_Ins_Cov_Ch_2010_2015",
+                 "Empl_Ins_Cov_Ch_2010_2015", 
+                 "Mktpl_Ins_Cov_Ch_2010_2015",
+                 "Mktpl_Tx_Credits", 
+                 "Avg_Mo_Tx_Credit", 
+                 "State_Medicaid_Exp", 
+                 "Medicaid_Enroll_2013", 
+                 "Medicaid_Enroll_2016",
+                 "Medicaid_Enroll_Ch_2013_2016", 
+                 "Medicare_Enroll_2016")
+
+str(aca)
+
+aca$Uninsured_Rate_2010 <- as.numeric(sub("%", "", aca$Uninsured_Rate_2010))/100
+aca$Uninsured_Rate_2015 <- as.numeric(sub("%", "", aca$Uninsured_Rate_2015))/100
+aca$Uninsured_Rate_Ch_2010_2015 <- as.numeric(sub("%", "", aca$Uninsured_Rate_Ch_2010_2015))/100
+
+str(aca)
+dim(aca)
+summary(aca)
+
+aca$Avg_Mo_Tx_Credit <- as.numeric(gsub("[^0-9]", "", aca$Avg_Mo_Tx_Credit))
+#aca$Avg_Mo_Tx_Credit <- as.numeric(gsub("$", "", aca$Avg_Mo_Tx_Credit))
+aca$State <- as.factor(aca$State)
+aca$State_Medicaid_Exp<-as.factor(aca$State_Medicaid_Exp)
+
+
+#library(dplyr)
+#library(ggplot2)
+#library(reshape2)
+
+#date is chr, converting that to date format
+#races$date<-as.Date(races$date,"%Y-%m-%d")
+#df$Datetime <- as.POSIXct(df$Datetime, format="%m/%d/%Y %I:%M:%S %p")
+
+#substuting Grand Prix with GP to make it shorter
+#races$name<-gsub(" Grand Prix"," GP",races$name)
+
+#removing empty rows(all NAs), if any
+#results_new<-results_new[rowSums(is.na(results_new)) != ncol(results_new),]
+#df <- na.omit(df)
+
+#delete a row by row number
+#df <- df[-29, ]
+
+#report missing values in each column
+#sapply(airquality, function(x) sum(is.na(x)))
+
+#case normalisation
+#toupper()
+
+#Plotting a particular column to see distribution
+#plot(df[,"Gender"])
+
+#reset row names
+#rownames(T) <- seq(length=nrow(T)) 
+# or remove row names rownames(T) <- NULL
+
+#check for NA in a particular row
+#subset(df,grepl("NA ",df$HR))
+
+#subset dataframe without NA
+#df <- df[df$HR != "NA ", ]
+
+#min and max min(df$HR) max(df$HR)
+
+#changing all f to F in a column
+#df$Gender[df$Gender %in% "f"] <- "F"
+
+#boxplot(aca$State_Medicaid_Exp)
+#barplot (aca$State_Medicaid_Exp)
+
+YOUTUBE
+library(ggplot2)
+View(diamonds)
+
+library(dplyr)
+tbl_df(diamonds)
+
+library(EDAWR)
+library(tidyr)
+
+View (cases)
+gather(cases,"year", "n", 2:4)
+
+spread(pollution, size, amount)
+
+storms2<- separate(storms, date, c("year","month","day"), sep ="-")
+storms3<-unite(storms2, "date", year, month, day, sep="-")
+
+FISH
+setwd("D:/DATA SCIENCE/SEM 4/IE")
+#gc()
+
+fish<-read.csv("Fishes-brief.csv",stringsAsFactors = FALSE)
+head(fish)
+
+fish<-fish[-c(1,2,4,8)] #dropping unrequired columns
+
+fish<-fish[fish$decimalLongitude<145.1 & fish$decimalLongitude>144.5 & fish$decimalLatitude< -37.5 & fish$decimalLatitude> -38.5,] #filtering data based on our beach coordinates
+#114993,5
+
+fish<-na.omit(fish) #removing blank rows
+#28823,5
+
+fish$eventDate<-as.Date(fish$eventDate,format='%Y-%m-%d', stringsAsFactors =FALSE) #correcting the date format
+str(fish)
+fish<-fish[fish$eventDate>"1950-01-01",] #filtering data after 1950
+fish<-na.omit(fish) #removing blank rows again #25913,5
+
+#fish<- fish[!duplicated(fish), ]#removing duplicated rows, 16322fish5
+
+#Identifying unique values
+unique(fish$scientificName)
+
+#creating a new dataframe with grouped values for fishes
+
+library("dplyr")
+fish_grouped<-fish %>% group_by(scientificName, family) %>% summarize(count=n())
+
+str(fish_grouped)
+
+
+fish_grouped$scientificName<-as.character(fish_grouped$scientificName)
+fish_grouped$family<-as.character(fish_grouped$family)
+
+
+# fixing the name cases in the 'scientificName" and "family" columns
+
+library(Hmisc)
+fish_grouped$scientificName<-capitalize(fish_grouped$scientificName)
+fish_grouped$family<-capitalize(fish_grouped$family)
+
+#writing the dataframe to a csv
+write.csv(fish_grouped,file="Fish_Grouped.csv" )
+
+#library(readr)
+library(jsonlite)
+#fish_grouped %>% toJSON() %>% write_lines("D:/DATA SCIENCE/SEM 4/IE/Fish_grouped.json")
+
+write_json(fish_grouped, "D:/DATA SCIENCE/SEM 4/IE/Fish_grouped.json")
