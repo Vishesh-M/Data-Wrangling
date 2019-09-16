@@ -1,0 +1,300 @@
+setwd("E:/DATA SCIENCE/SEM 3/Data Visualisation/Project/F1/F1 Data")
+
+# Loading the csv files into R
+results<- read.csv("results.csv", stringsAsFactors = FALSE) #main file
+drivers <- read.csv("drivers.csv", stringsAsFactors = FALSE)
+driver_standings<- read.csv("driverStandings.csv", stringsAsFactors = FALSE)
+constructors<- read.csv("constructors.csv", stringsAsFactors = FALSE)
+constructor_results<-read.csv("constructorResults.csv", stringsAsFactors = FALSE)
+constructor_standings<- read.csv("constructorStandings.csv", stringsAsFactors = FALSE)
+circuits<- read.csv("circuits.csv", stringsAsFactors = FALSE)
+races<- read.csv("races.csv",stringsAsFactors = FALSE)
+#pitstop<-read.csv("pitStops.csv",stringsAsFactors = FALSE)
+
+# Plotting the circuits on a World Map
+library(leaflet)
+View(circuits)
+
+leaflet(data = circuits) %>% addProviderTiles(providers$Esri.NatGeoWorldMap) %>%
+    addMarkers(~lng, ~lat)
+
+############################################################################################
+# Working with the main file
+
+# Converting speed to numeric
+results$fastestLapSpeed<-as.numeric(results$fastestLapSpeed) #speed in kmph
+
+# Fastest lap speeds are given as mm:ss.s. 
+# Below is a function to convert all the speeds into seconds
+Fastest_Lap_Sec<-function(x){
+  if(length(x)>0){
+    minute<-as.numeric(strsplit(x,":")[[1]][1])
+    second<-as.integer(strsplit(x,":")[[1]][2])
+    ms<-as.numeric(strsplit(x,"\\.")[[1]][2])
+    return(minute*60 + second + ms*0.1)
+  }
+  else if(length(x)==0){
+    return(NA)
+  }
+}
+results$fastestLapTimeSec<-sapply(results$fastestLapTime, Fastest_Lap_Sec)
+
+
+#######################################################################################
+#HAVE CARS BEEN GETTING FASTER OVER THE YEARS?
+
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+
+str(races)
+View(races)
+
+#date is chr, converting that to date format
+races$date<-as.Date(races$date,"%Y-%m-%d")
+
+#substuting Grand Prix with GP to make it shorter
+races$name<-gsub(" Grand Prix"," GP",races$name)
+
+#creating a new results file and combining with races file
+results_new<-left_join(results %>% 
+      dplyr::select(-time, -fastestLapTime, -milliseconds,-position,-positionText), 
+  races %>% dplyr::select(-time, -url), by='raceId')
+
+results_new$year=as.character(results_new$year)
+
+#adding circuits information to the races dataframe
+races<-left_join(races %>% select(-name,-url), circuits %>% select(-url,-alt,-lng,-lat), by='circuitId')
+
+#removing empty rows(all NAs), if any
+results_new<-results_new[rowSums(is.na(results_new)) != ncol(results_new),]
+
+#checking for any negative values in the data frame 
+for (name in names(results_new)) {
+  if (name != "date") {
+    print(paste(name, nrow(results_new[na.exclude(results_new[[paste(name)]])
+                                       <0,]), sep=": "))
+  }
+}
+
+
+#combining pitstop data to the main file
+#results_new<-left_join(results_new,pitstop %>% dplyr::select(-time,-milliseconds), by=c('raceId','driverId'))
+
+
+#checking for duplicated rows in the main dataframe and removing them
+results_new<-results_new[!duplicated(results_new),]
+
+
+#write.csv(results_new,file="results_master.csv",row.names = FALSE)
+
+#checking for outliers, fastest lap speed
+results_new %>% dplyr::filter(!is.na(fastestLapSpeed)) %>% dplyr::group_by(name,year) %>% 
+  summarize(avgFastestLapSpeed = mean(fastestLapSpeed,na.rm=T)) %>% 
+  ggplot(aes(x=year,y= avgFastestLapSpeed,color=avgFastestLapSpeed))+geom_boxplot(alpha=0.25)+
+  geom_point()+theme_gray()+xlab("Years")+ylab("Average Fastest Lap")+
+  labs( title='Average Fastest Lap per Year',subtitle='in km/h, grouped by Grand Prix')
+#this seems okay, since some tracks have faster speeds and some have slower
+
+#MAKE FACET GRID
+
+#checking for outliers, fastest lap time
+results_new %>% dplyr::filter(!is.na(fastestLapTimeSec)) %>% dplyr::group_by(name,year) %>% 
+  summarize(avgFastestLapTimeSec = mean(fastestLapTimeSec,na.rm=T)) %>% 
+  ggplot(aes(x=year,y= avgFastestLapTimeSec,color=avgFastestLapTimeSec))+geom_boxplot( alpha=0.25)+
+  geom_point()+theme_gray()+xlab("Years")+ylab("Average Fastest Lap Time")+
+  labs( title='Fastest Lap Time per Year',subtitle='in seconds, grouped by Grand Prix')
+
+#plotting missing values
+library(lattice)
+library(mice)
+library(VIM)
+
+md.pattern(results_new)
+mice_plot <- aggr(results_new, col=c('navyblue','yellow'),
+                  numbers=TRUE, sortVars=TRUE,
+                  labels=names(results_new), cex.axis=.7,
+                  gap=3, ylab=c("Missing data","Pattern"))
+
+#library(Amelia)
+#missmap(results_new, legend = T)
+
+###################################################################################################
+
+#plotting fastest lap times for all circuits for the last 10 years
+results_new %>% dplyr::filter(year>2007) %>% dplyr::group_by(name,year) %>% 
+  summarize(avgFastestLapSpeed = mean(fastestLapSpeed,na.rm=T)) %>%
+  ggplot(aes(x=year,y= avgFastestLapSpeed,color=avgFastestLapSpeed)) + 
+  geom_point() +theme_bw() + theme(
+    axis.text.x = element_text(size=7,angle=45),axis.text.y= element_text(size=7,angle= 45),
+    strip.text.x = element_text(size = 10))+
+  facet_wrap(~name,ncol=9)+geom_smooth(aes(group = 1),method = "lm",color = "blue",formula = y~ poly(x, 2),se = FALSE)+
+  labs(title='Fastest Lap per Circuit, from 2008 to 2017 (last 10 years)',subtitle='Speed in km/h')+
+  xlab("Years")+ylab("Average Lap Speed")
+
+####################################################################################################
+
+#MOST SUCCESSFUL F1 TEAMS
+
+names(constructors)[3]<-"teamName"
+#removing the status column as it is just full of NULL
+constructor_results <- subset( constructor_results, select = -status )
+
+#combining constructor_results to races to match with race ID
+constructor_results<-left_join(constructor_results,races %>% dplyr::select(-time,-circuitRef) %>% rename(raceName=name)
+                               ,by="raceId")
+
+#combining constructors to constructor_results
+constructor_results<-left_join(constructor_results,constructors %>% dplyr::select(-url,-constructorRef),
+                         by="constructorId")
+
+#combining constructor_standings to constructor_results
+constructor_results<-left_join(constructor_results,constructor_standings %>% dplyr::select(-X,-positionText) %>% 
+                                 rename(constructorPoints=points),by=c("raceId","constructorId"))
+
+constructor_results <- subset( constructor_results, select = -X)
+
+write.csv(constructor_results,file="constructors_master.csv",row.names = FALSE)
+
+team_results<-constructor_results  %>% group_by(teamName) %>% 
+  summarise(totalPoints=sum(constructorPoints,na.rm=T)) %>% filter(totalPoints >= 1000)%>%
+  ggplot(aes(x=reorder(teamName,totalPoints),y= totalPoints,fill=totalPoints)) +
+  geom_bar(stat='identity',color='white',alpha=0.7) + scale_fill_gradient(low="blue",high="black")+
+  coord_flip() + theme_bw() + 
+  labs(title="Number of victories per Team",subtitle='Only showing teams with points greater than 1000') + 
+  guides(fill=F)+ylab("Number of Points")+xlab("Team Names")
+
+#MOST SUCCESSFUL F1 TEAMS
+team_results
+
+#MOST SUCCESSFUL F1 DRIVERS
+
+drivers<-left_join(drivers %>% select(-url,-number), driver_standings%>% 
+                     select(-points,-positionText,-position),by='driverId')
+
+results_drivers<-left_join(results_new, drivers, by=c('driverId','raceId')) 
+
+#writing the master file to csv to be used later in Shiny
+write.csv(results_drivers,file="results_master.csv",row.names = FALSE)
+
+best_drivers<-results_drivers %>% 
+  dplyr::filter(positionOrder==1) %>% 
+  dplyr::group_by(driverRef, name) %>% 
+  dplyr::summarize(count=n()) %>% 
+  dplyr::mutate(totalWins = sum(count)) %>% 
+  dplyr::filter(totalWins>3) %>%
+  ggplot(aes(x=reorder(driverRef, totalWins),y= count)) +
+  geom_bar(aes(fill=name),stat='identity',color='white',size=.1) + 
+  coord_flip() + theme_bw() +
+  guides(fill=guide_legend(ncol=6)) + 
+  theme(legend.text= element_text(size=10),
+        legend.key.size = unit(.2, "cm"),
+        legend.position=c(.65,.20)) + 
+  labs(title="Number of Wins per Driver",
+       subtitle="Only drivers with 3 or more wins are shown")+
+  ylab("Number of Wins")+xlab("Driver Names")
+
+best_drivers
+#races_per_driver<-results_drivers %>% dplyr::group_by(driverRef) %>% dplyr::summarize(count=n())
+
+#############################################################################################
+#NORMALISED RACE WINS
+#library(directlabels)
+
+  normalised_wins_driver<-results_drivers %>% group_by(driverRef) %>%
+  summarise(count = n(),numWins = sum(positionOrder == 1)) %>% 
+  #select(driverId, count, numWins,driverRef) %>% 
+  mutate(perc = (numWins/count)*100) %>% 
+  select(driverRef, perc) %>% dplyr::filter(perc>10) %>% 
+  #arrange(desc(perc)) %>% 
+  ggplot(aes(x=reorder(driverRef,perc),y= perc,fill=perc)) +
+  geom_bar(stat='identity',color='white',alpha=0.7) + scale_fill_gradient(low="light blue",high="black")+
+  coord_flip() + theme_bw()  + 
+    #geom_dl(aes(label = count), method = list(dl.combine("first.points", "last.points"), cex = 0.8)) +
+  labs(title="Drivers By Win Percentage - Normalised",
+       subtitle="Only drivers with 10% or more wins are shown")+
+  ylab("Percentage of Wins")+xlab("Driver Names")
+
+normalised_wins_driver
+# driver_vs_perc_win %>% 
+#   inner_join(results_drivers) %>% 
+#   select 
+# drivers[drivers$driverId == 1,1:5]
+
+
+# results_drivers %>% 
+#   dplyr::filter(position==1) %>% 
+#   dplyr::group_by(driverRef) %>% 
+#   dplyr::summarize(count=n()) %>%
+#   dplyr::mutate(totalWins = sum(count)) %>% 
+#   dplyr::group_by(driverRef)%>%
+#   dplyr::mutate(winPercentage = 100*(totalWins/races_per_driver)) %>%
+#   ggplot(aes(x=reorder(driverRef, winPercentage),y= winPercentage)) +
+#   geom_bar(stat='identity',color='white',size=.1) + 
+#   coord_flip() + theme_bw() +
+#   #guides(fill=guide_legend(ncol=6)) + 
+#   #theme(legend.text= element_text(size=10),
+#         #legend.key.size = unit(.2, "cm"),
+#         #legend.position=c(.65,.20)) + 
+#   labs(title="Number of Wins per Driver",
+#        subtitle="only drivers with 3 or more wins are shown")+
+#   ylab("Number of Wins")+xlab("Driver Names")
+##########################################################################################
+
+
+#Cheching for correlation between grid and position and a few others
+
+library(ggcorrplot)
+
+#gg<-cor(results_new$grid,results_new$position,use='complete.obs',method = "pearson")
+
+results_new_2<-subset(results_new,select=-c(year,date,name,constructorId,driverId,raceId,rank,
+                                            circuitId,resultId,statusId,round,points))
+
+results_cor_matrix<-round(cor(results_new_2,use='complete.obs'),2)#putting the correlation matrix in variable gg
+
+ggcorrplot(results_cor_matrix,lab=TRUE)#plotting the correlation matrix
+
+#############################################################################################
+# TRY TO DETERMINE THE LENGTH OF EACH TRACK
+results_new %>% dplyr::filter(year>2007) %>% dplyr::group_by(name) %>% 
+  summarize(medianFastestLapSpeed = median(fastestLapSpeed,na.rm=T)) %>% 
+  ggplot(aes(x=name,y=medianFastestLapSpeed))
+##############################################################################
+
+results_temp<-left_join(results_drivers, constructor_results
+                     %>% select(-position,-positionText,-constructorPoints,-country,-wins, -circuitId,-year,-date,-location),
+                     by=c('raceId','constructorId'))
+
+temp<-data.frame(
+  results_temp %>% filter(positionOrder==1) %>% 
+    group_by(name, driverRef) %>% 
+    summarize(count=n()) %>% filter(count>5) %>% na.omit())
+
+library(circlize)
+
+chordDiagram(temp[,c(1:2)],transparency = 0.5, grid.col = 1:6,annotationTrack = "grid", preAllocateTracks = 1)
+#cosmetic
+circos.par(points.overflow.warning=FALSE)
+circos.trackPlotRegion(
+  track.index = 1, 
+  panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim")
+    ylim = get.cell.meta.data("ylim")
+    sector.name = get.cell.meta.data("sector.index")
+    circos.text(
+      mean(xlim), 
+      ylim[1], 
+      sector.name, 
+      facing = "clockwise", 
+      niceFacing = TRUE, 
+      adj = c(0, 0.25), 
+      cex=.7)
+    circos.axis(
+      h = "top", 
+      labels.cex = 0.5, 
+      major.tick.percentage = 0.2, 
+      sector.index = sector.name, 
+      track.index = 2)
+  }, 
+  bg.border = NA)
